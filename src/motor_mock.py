@@ -12,7 +12,8 @@ from src.motor import _aplicar
 from src.numeros import _norm, texto_a_monto
 
 _PRECIO = re.compile(r"\ba\s+(\d+(?:[.,]\d+)?)")
-_CANT_PROD = re.compile(r"(\d+)\s+(?:kilos?\s+de\s+|paquetes?\s+de\s+)?([a-zñ]+)")
+_CANT_PROD = re.compile(r"(\d+)\s+(?:kilos?\s+de\s+|paquetes?\s+de\s+)?([a-zñ]+(?:\s+(?!a\b|de\b|para\b|y\b)[a-zñ]+)?)")
+_SEPARADOR = re.compile(r"\s+y\s+(?=\d)|,\s*(?=\d)")  # "10 panes a 0.30 y 3 leches a 5.20"
 _VERBOS = {"pague", "compre", "vendi", "gaste", "devolvi", "salio", "salieron", "hoy", "total"}
 _CLIENTE = re.compile(r"\b(?:senora|dona|don)\s+([a-z]+(?:\s+maria)?)")
 
@@ -30,6 +31,15 @@ def _extraer(texto: str) -> dict:
     else:
         tipo = "venta"
 
+    filas = [_fila(tipo, parte) for parte in _SEPARADOR.split(t)]
+    cliente = _CLIENTE.search(t)
+    if tipo in {"fiado", "cobro_fiado"} and cliente:
+        for fila in filas:
+            fila["cliente"] = cliente.group(1)
+    return {"filas": filas}
+
+
+def _fila(tipo: str, t: str) -> dict:
     cp = _CANT_PROD.search(t)
     cantidad = float(cp.group(1)) if cp else None
     producto = cp.group(2) if cp else ""
@@ -43,10 +53,7 @@ def _extraer(texto: str) -> dict:
         fila["monto_total"] = texto_a_monto(resto) if re.search(r"\d", resto) else None
         if not producto:
             fila["producto"] = next((w for w in resto.split() if len(w) > 3 and w.isalpha() and w not in _VERBOS), "")
-    cliente = _CLIENTE.search(t)
-    if tipo in {"fiado", "cobro_fiado"} and cliente:
-        fila["cliente"] = cliente.group(1)
-    return {"filas": [fila]}
+    return fila
 
 
 def procesar(id_mensaje: str, texto: str, estado: dict) -> dict:

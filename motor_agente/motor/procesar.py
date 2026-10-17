@@ -14,7 +14,9 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 # Cualquier API compatible con OpenAI. Por defecto Groq.
 BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
 API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY", "")
-MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")  # llama-3.3-70b-versatile ya no existe en Groq
+
+USO = {"llamadas": 0, "prompt_tokens": 0, "completion_tokens": 0}
 
 TIPOS = {"venta", "gasto", "fiado", "cobro_fiado"}
 
@@ -102,8 +104,15 @@ def _llm(sistema, usuario):
                 model=MODEL, temperature=0,
                 response_format={"type": "json_object"},
                 messages=[{"role": "system", "content": sistema}, {"role": "user", "content": usuario}])
+            if r.usage:
+                USO["llamadas"] += 1
+                USO["prompt_tokens"] += r.usage.prompt_tokens
+                USO["completion_tokens"] += r.usage.completion_tokens
             return json.loads(r.choices[0].message.content)
         except Exception as e:  # 429, JSON roto, red...
+            codigo = getattr(e, "status_code", None)
+            if codigo and 400 <= codigo < 500 and codigo != 429:
+                raise  # modelo inexistente, key mala...: reintentar no sirve
             ultimo = e
             time.sleep(2 + 4 * intento)
     raise RuntimeError(f"LLM falló: {ultimo}")

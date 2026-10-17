@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.caja import flujo_caja  # noqa: E402
-from src.motor import COLUMNAS, DATA, a_fila_csv, nuevo_estado, procesar, procesar_lote  # noqa: E402
+from src.motor import COLUMNAS, DATA, LLAMADAS, a_fila_csv, nuevo_estado, procesar, procesar_lote  # noqa: E402
 
 
 def columnas_plantilla() -> list[str]:
@@ -56,6 +56,10 @@ def main():
 
     print(f"{len(mensajes)} mensajes -> {len(filas)} filas en {salida} ({time.time() - t0:.1f}s)")
     print("Flujo:", flujo_caja(filas))
+    for r in LLAMADAS:
+        estado_llamada = r["uso"] or "FALLÓ"
+        fallos = f" | fallos: {'; '.join(r['fallos'])}" if r["fallos"] else ""
+        print(f"  {r['etiqueta']}: {estado_llamada}{fallos}")
 
 
 if __name__ == "__main__":

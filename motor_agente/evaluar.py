@@ -2,6 +2,7 @@
 
 python evaluar.py            # prueba ciega: los últimos 10 ejemplos NO van en el prompt
 python evaluar.py --ultimos 5
+python evaluar.py --lote      # como batch.py: los ciegos en lote
 python evaluar.py --ultimos 0   # todos en el prompt (solo para verificar que no se rompe)
 Los mensajes que sí van en el prompt se meten al estado con la clave (sin gastar llamadas al LLM).
 """
@@ -10,7 +11,7 @@ import csv
 import time
 from collections import Counter
 
-from motor.procesar import DATA, aplicar_clave, cargar_ejemplos, flujo_caja, nuevo_estado, procesar
+from motor.procesar import DATA, aplicar_clave, cargar_ejemplos, flujo_caja, nuevo_estado, procesar, procesar_lote
 
 
 def clave_fila(f):
@@ -22,6 +23,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ultimos", type=int, default=10)
     ap.add_argument("--pausa", type=float, default=1.0)
+    ap.add_argument("--lote", action="store_true")
     a = ap.parse_args()
 
     ejemplos = cargar_ejemplos()
@@ -29,14 +31,25 @@ def main():
     ciegos = set(ids[-a.ultimos:]) if a.ultimos else set(ids)
 
     estado = nuevo_estado()
+    lote = {}
+    if a.lote:  # los ciegos van al final, así que primero se carga la clave de los demás
+        for i, _, filas_clave in ejemplos:
+            if i not in ciegos:
+                aplicar_clave(estado, i, filas_clave)
+        lote = procesar_lote([(i, m) for i, m, _ in ejemplos if i in ciegos], estado,
+                             excluir_ejemplos=ciegos if a.ultimos else ())
     ok = falt = extra = 0
     esperadas_ciegas = []
     for i, msg, filas_clave in ejemplos:
         if i not in ciegos:
-            aplicar_clave(estado, i, filas_clave)
+            if not a.lote:
+                aplicar_clave(estado, i, filas_clave)
             continue
-        r = procesar(msg, estado, id_mensaje=i, excluir_ejemplos=ciegos if a.ultimos else ())
-        time.sleep(a.pausa)
+        if a.lote:
+            r = lote[i]
+        else:
+            r = procesar(msg, estado, id_mensaje=i, excluir_ejemplos=ciegos if a.ultimos else ())
+            time.sleep(a.pausa)
         esp = Counter(clave_fila(f) for f in filas_clave)
         got = Counter(clave_fila(f) for f in r["filas"])
         buenas = sum((esp & got).values())

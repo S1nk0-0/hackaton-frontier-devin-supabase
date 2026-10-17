@@ -1,0 +1,34 @@
+﻿id_mensaje,tipo,producto,cantidad,monto,requiere_confirmacion
+E01,venta,pan,10,3.00,NO
+E01,venta,leche gloria,3,12.60,NO
+E02,gasto,agua,1,45.00,NO
+E03,fiado,aceite primor,1,11.00,NO
+E04,venta,gaseosa,4,10.00,NO
+E05,venta,abarrotes sueltos,1,150.00,NO
+E06,gasto,saco de arroz,1,180.00,NO
+E07,venta,azúcar,2,8.00,NO
+E08,venta,huevos,6,3.00,NO
+E09,venta,atún,3,,SI
+E10,venta,ventas sueltas,1,210.00,NO
+E11,venta,pan,8,2.40,NO
+E12,cobro_fiado,aceite primor,1,11.00,NO
+E13,gasto,balón de gas,1,50.00,NO
+E14,fiado,cerveza,2,,SI
+E15,venta,pollo,1,12.00,NO
+E15,venta,yogur,2,11.00,NO
+E16,gasto,gaseosas proveedor,1,180.00,NO
+E17,venta,pan,12,3.60,NO
+E17,venta,detergente,2,13.00,NO
+E18,gasto,devolución yogur,1,5.50,NO
+E19,venta,ventas sueltas,1,190.00,NO
+E20,gasto,bolsas,1,,SI
+E21,cobro_fiado,pago parcial don Pepe,1,10.00,NO
+E22,venta,cerveza,3,19.50,NO
+E23,venta,ventas sueltas,1,240.00,NO
+E24,gasto,ayudante,1,35.00,NO
+E25,venta,pan,20,6.00,NO
+E25,venta,gaseosa,5,12.50,NO
+E27,venta,ventas sueltas,1,280.00,NO
+E28,gasto,galletas,1,60.00,NO
+E29,venta,leche,4,16.80,NO
+E30,venta,ventas sueltas,1,120.00,NO

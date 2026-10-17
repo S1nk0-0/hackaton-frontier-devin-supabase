@@ -46,7 +46,16 @@ There is no test suite or linter. `scripts/evaluar.py` is the regression check: 
 - `src/caja.py` — no API. `flujo_caja`: flow = ventas + cobros_fiado − gastos (fiados don't move cash). `estimar_cuota(filas, semanas=1)`: weekly flow × 4.3 × 0.30, excluding unconfirmed (`SI`) rows; returns 0 if flow ≤ 0. Text must always state it is only an estimate, never a promise or credit approval.
 - `src/voz.py` — Whisper transcription on Groq (`MODELO_VOZ`, default `whisper-large-v3`, language `es`, `verbose_json`). `transcribir(ruta)` returns `""` for silence/noise: drops segments with `no_speech_prob ≥ 0.6` and Whisper hallucinations ("gracias por ver", "subtítulos"…, via `es_ruido`). Retries on 429/connection errors. `PISTA` is the vocabulary hint: add products or words Whisper gets wrong there.
 - `app.py` — Gradio 6 Blocks UI (Chatbot uses messages format by default, no `type=` arg): chat + microphone, transactions table, cash summary, quota button, and upload of a previous week CSV (either raw `id_mensaje,dia,mensaje` → processed with `procesar_lote`, or already-processed rows with a `tipo` column). If a question is pending, the user's reply (digits or words, via `texto_a_monto`) completes the row; "no sé / no me acuerdo / después" leaves it as `SI`, marks it `_omitida` and stops asking; `siguiente_pregunta` then asks for the next row without amount, one at a time. The quota is shown as a range 25 %–30 % of monthly flow. Voice notes: the chat shows "🎤 *Te entendí:* …" (`responder(..., mostrar=)`) while the raw transcript is what gets processed; empty transcript → asks her to repeat closer to the phone. Previous week's pending fiados carry over.
-- `motor_agente/` — alternative engine imported from `motor_mibanco.zip`; nothing in the app uses it. Different contract: `procesar(texto, estado, id_mensaje=None, modo="batch"|"chat")`. Reads `data/` from the repo root. Own venv in `motor_agente/.venv`; run from inside `motor_agente/`: `python test_mock.py` (no API, must print `IGUAL A LA CLAVE: True` and 788.9), `python evaluar.py [--lote]` (blind test on E21–E30), `python batch.py <csv> <equipo> [--por-mensaje]`. Excludes few-shot examples by id, so do not feed it the eval2 set (its ids E01–E40 collide with the examples).
+
+## Entrega
+
+Team name: **patolovers**. Deliverable command:
+
+```bash
+python scripts/batch.py <set_oculto.csv> patolovers   # writes resultados_patolovers.csv
+```
+
+Use a different name (e.g. `prueba`) for rehearsals so they are not confused with the real deliverable.
 
 ## Business rules / tricky cases (from the kit)
 

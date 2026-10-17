@@ -28,10 +28,15 @@ COLUMNAS = ["id_mensaje", "tipo", "producto", "cantidad", "monto", "requiere_con
 TIPOS = {"venta", "gasto", "fiado", "cobro_fiado"}
 
 MODELO = os.getenv("MODELO_LLM", "openai/gpt-oss-120b")
+MODELO_RESPALDO = os.getenv("MODELO_LLM_RESPALDO", "llama-3.3-70b-versatile")
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "medium")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+TIMEOUT_S = 45
+MAX_ESPERA_429 = 30  # si un 429 pide esperar más, se pasa a la siguiente opción
 
-_cliente = None
+_clientes: dict[str, object] = {}
+_opcion = 0  # índice en _opciones(); no se vuelve atrás a una opción agotada
+LLAMADAS: list[dict] = []  # una entrada por llamada al LLM: qué key/modelo se usó y qué falló
 
 
 # --------------------------------------------------------------------------- estado
@@ -48,48 +53,76 @@ def nuevo_estado() -> dict:
 
 # --------------------------------------------------------------------------- LLM
 
-def _get_cliente():
-    global _cliente
-    if _cliente is None:
+def _opciones() -> list[tuple[str, str, str]]:
+    """(nombre_key, key, modelo) en orden: key 1 → key 2 → respaldo con key 2 → respaldo con key 1."""
+    k1, k2 = os.getenv("GROQ_API_KEY"), os.getenv("GROQ_API_KEY_2")
+    if not k1:
+        raise RuntimeError("Falta GROQ_API_KEY. Copia .env.example a .env y pon tu key.")
+    orden = [("key 1", k1, MODELO), ("key 2", k2, MODELO), ("key 2", k2, MODELO_RESPALDO), ("key 1", k1, MODELO_RESPALDO)]
+    vistas, out = set(), []
+    for nombre, key, modelo in orden:
+        if key and (key, modelo) not in vistas:
+            vistas.add((key, modelo))
+            out.append((nombre, key, modelo))
+    return out
+
+
+def _cliente_para(key: str):
+    if key not in _clientes:
         from openai import OpenAI
 
-        key = os.getenv("GROQ_API_KEY")
-        if not key:
-            raise RuntimeError("Falta GROQ_API_KEY. Copia .env.example a .env y pon tu key.")
-        _cliente = OpenAI(api_key=key, base_url=GROQ_BASE_URL)
-    return _cliente
+        _clientes[key] = OpenAI(api_key=key, base_url=GROQ_BASE_URL, timeout=TIMEOUT_S, max_retries=0)
+    return _clientes[key]
 
 
-def _llamar_llm(mensajes: list[dict], max_intentos: int = 6) -> dict:
-    """Llama al LLM pidiendo JSON. Reintenta con backoff ante 429 / errores 5xx."""
-    from openai import APIConnectionError, APIStatusError, RateLimitError
+def _llamar_llm(mensajes: list[dict], max_intentos: int = 6, etiqueta: str = "") -> dict:
+    """Llama al LLM pidiendo JSON. Reintenta con backoff ante 429 / 5xx / timeout.
 
-    extra = {}
-    if "gpt-oss" in MODELO and REASONING_EFFORT:
-        extra["reasoning_effort"] = REASONING_EFFORT
+    Si un 429 pide esperar más de MAX_ESPERA_429 s (p. ej. límite diario agotado) o el modelo
+    no existe para esa key (404), pasa a la siguiente opción de _opciones() sin esperar.
+    """
+    global _opcion
+    from openai import APIConnectionError, APIStatusError, NotFoundError, RateLimitError
 
+    opciones = _opciones()
+    registro = {"etiqueta": etiqueta, "uso": None, "fallos": []}
+    LLAMADAS.append(registro)
     ultimo_error = None
     for intento in range(max_intentos):
+        nombre, key, modelo = opciones[min(_opcion, len(opciones) - 1)]
+        extra = {"reasoning_effort": REASONING_EFFORT} if "gpt-oss" in modelo and REASONING_EFFORT else {}
         try:
-            resp = _get_cliente().chat.completions.create(
-                model=MODELO,
+            resp = _cliente_para(key).chat.completions.create(
+                model=modelo,
                 messages=mensajes,
                 temperature=0,
                 response_format={"type": "json_object"},
                 **extra,
             )
-            return json.loads(resp.choices[0].message.content)
+            salida = json.loads(resp.choices[0].message.content)
+            registro["uso"] = f"{nombre} / {modelo}"
+            return salida
         except RateLimitError as e:
             ultimo_error = e
             espera = _retry_after(e) or min(2 ** intento, 30)
-        except (APIConnectionError, json.JSONDecodeError) as e:
+        except (APIConnectionError, json.JSONDecodeError) as e:  # incluye timeout
             ultimo_error = e
             espera = min(2 ** intento, 10)
         except APIStatusError as e:
-            if e.status_code < 500:
+            if e.status_code < 500 and not isinstance(e, NotFoundError):
                 raise
             ultimo_error = e
-            espera = min(2 ** intento, 10)
+            espera = 0 if isinstance(e, NotFoundError) else min(2 ** intento, 10)
+        registro["fallos"].append(f"{nombre} / {modelo}: {type(ultimo_error).__name__}")
+        cambiar = isinstance(ultimo_error, NotFoundError) or (
+            isinstance(ultimo_error, RateLimitError) and espera > MAX_ESPERA_429)
+        if cambiar:
+            if _opcion >= len(opciones) - 1:  # no queda respaldo: mejor fallar ya que esperar minutos
+                raise RuntimeError(f"Todas las keys/modelos agotados; el último falló con: {ultimo_error}")
+            _opcion += 1
+            sig = opciones[_opcion]
+            print(f"  [motor] {nombre} / {modelo} no disponible ({type(ultimo_error).__name__}); paso a {sig[0]} / {sig[2]}")
+            continue
         print(f"  [motor] reintento {intento + 1}/{max_intentos} en {espera:.1f}s ({type(ultimo_error).__name__})")
         time.sleep(espera)
     raise RuntimeError(f"El LLM falló tras {max_intentos} intentos: {ultimo_error}")
@@ -162,6 +195,7 @@ REGLAS:
 1. Un mensaje puede tener varias transacciones o ninguna. Los gastos PERSONALES o del hogar (no del negocio) NO se registran.
 2. Si ella se corrige ("no perdón, fueron 8"), usa SOLO la versión corregida.
 3. Para cada transacción extrae: cantidad, precio_unitario, descuento (en soles) o descuento_pct (porcentaje), y monto_total solo si ella dice el total directamente. NO hagas cálculos: el sistema los hace.
+   Un precio puede venir como "a 11", "está 11 soles", "cuesta 11", "sale 11", "11 soles" después del producto: eso es precio_unitario (o monto_total si es el total), no falta el monto.
 4. Si NO hay forma de saber el monto (ni total ni precio), deja precio_unitario y monto_total en null. NUNCA inventes un monto ni pongas 0.
 5. Si es un cobro de fiado y no dice cuánto, deja el monto en null y pon el nombre del cliente: el sistema busca cuánto debía.
 6. Usa nombres de producto cortos y en minúscula, con el mismo estilo de los ejemplos.
@@ -309,7 +343,8 @@ def procesar(id_mensaje: str, texto: str, estado: dict) -> dict:
     """Procesa UN mensaje. Devuelve {"filas": [...], "pregunta": str | None}."""
     sistema = SISTEMA + "\n\n" + _bloque_ejemplos({_norm(texto)})
     usuario = (_contexto(estado) + "\n\n" if _contexto(estado) else "") + f"Mensaje: {texto}"
-    salida = _llamar_llm([{"role": "system", "content": sistema}, {"role": "user", "content": usuario}])
+    salida = _llamar_llm([{"role": "system", "content": sistema}, {"role": "user", "content": usuario}],
+                         etiqueta=f"mensaje {id_mensaje}")
     return _aplicar(str(id_mensaje), salida, estado)
 
 
@@ -326,7 +361,8 @@ def procesar_lote(mensajes: list[tuple[str, str]], estado: dict, tam: int = 10) 
         usuario = (_contexto(estado) + "\n\n" if _contexto(estado) else "") + "MENSAJES:\n" + "\n".join(
             json.dumps({"id_mensaje": mid, "mensaje": t}, ensure_ascii=False) for mid, t in bloque
         )
-        salida = _llamar_llm([{"role": "system", "content": sistema}, {"role": "user", "content": usuario}])
+        salida = _llamar_llm([{"role": "system", "content": sistema}, {"role": "user", "content": usuario}],
+                             etiqueta=f"bloque {bloque[0][0]}–{bloque[-1][0]}")
         por_id = {str(m.get("id_mensaje")): m for m in salida.get("mensajes") or []}
         for mid, texto in bloque:
             if str(mid) in por_id:

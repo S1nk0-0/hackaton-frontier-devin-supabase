@@ -21,7 +21,7 @@ cp .env.example .env          # set GROQ_API_KEY; optional MODELO_LLM, REASONING
 python app.py                                   # Gradio UI at http://127.0.0.1:7860
 python scripts/evaluar.py                       # accuracy vs data/ejemplos_respuestas.csv, one LLM call per message
 python scripts/evaluar.py --lote                # same, batched (like batch.py)
-python scripts/evaluar.py --mensajes ejemplos_mensajes_eval2.csv --respuestas ejemplos_respuestas_eval2.csv  # held-out 2nd evaluator (flow 1285.10)
+python scripts/evaluar.py --mensajes data/ejemplos_mensajes_eval2.csv --respuestas data/ejemplos_respuestas_eval2.csv  # held-out 2nd evaluator (flow 1285.10)
 python scripts/batch.py set_oculto.csv equipo   # writes resultados_equipo.csv (deliverable, must finish < 2 min for 20 msgs)
 python scripts/batch.py set_oculto.csv equipo --por-mensaje
 python -m src.caja data/ejemplos_respuestas.csv # cash-flow check, no API; must print flujo 788.90
@@ -57,7 +57,7 @@ Discounts (E06: 190 − 10 = 180), numbers in words (E07, E22 "seis cincuenta"),
 - Input set: `id_mensaje,dia,mensaje`.
 - Output columns (from `data/plantilla_entrega.csv`, fallback `motor.COLUMNAS`): `id_mensaje,tipo,producto,cantidad,monto,requiere_confirmacion`. `tipo` ∈ {venta, gasto, fiado, cobro_fiado}; `monto` with dot decimal and 2 places, no "S/"; `cantidad` as integer when whole; `requiere_confirmacion` is `SI`/`NO`. Personal/household expenses produce no row.
 - CSVs are read with `utf-8-sig` (files have a BOM).
-- Held-out test set (written by the third teammate), in the repo root: `ejemplos_mensajes_eval2.csv` (40 messages) + `ejemplos_respuestas_eval2.csv` (42 rows, flow 1285.10). Same formats as the examples; its ids E01–E40 reuse the example ids but are different messages (`scripts/evaluar.py` excludes few-shot by text, so this is fine). Each fiado comes before its cobro (state is shared in order). New cases: personal expenses with "no es del negocio / de mi bolsillo" (E12, E24, E36), sale plus partial refund in the same message (E33 → venta + gasto), cobro with explicit amount equal to the debt (E38).
+- Held-out test set (written by the third teammate): `data/ejemplos_mensajes_eval2.csv` (40 messages) + `data/ejemplos_respuestas_eval2.csv` (42 rows, flow 1285.10). Same formats as the examples; its ids E01–E40 reuse the example ids but are different messages (`scripts/evaluar.py` excludes few-shot by text, so this is fine). Each fiado comes before its cobro (state is shared in order). New cases: personal expenses with "no es del negocio / de mi bolsillo" (E12, E24, E36), sale plus partial refund in the same message (E33 → venta + gasto), cobro with explicit amount equal to the debt (E38).
 
 ## Team split
 

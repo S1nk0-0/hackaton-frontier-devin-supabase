@@ -1,0 +1,43 @@
+﻿id_mensaje,tipo,producto,cantidad,monto,requiere_confirmacion
+E01,venta,fideos,2,5.60,NO
+E01,venta,mantequilla,1,4.50,NO
+E02,gasto,luz local,1,68.00,NO
+E03,fiado,azúcar,1,3.80,NO
+E04,venta,chocolates,5,7.50,NO
+E05,venta,abarrotes sueltos,1,180.00,NO
+E06,gasto,caja de aceite,1,85.00,NO
+E07,venta,atún,3,15.00,NO
+E08,venta,mayonesa,4,3.20,NO
+E09,venta,galletas soda,2,,SI
+E10,venta,ventas varias,1,195.00,NO
+E11,cobro_fiado,azúcar,1,3.80,NO
+E13,venta,jugos en caja,6,12.00,NO
+E14,gasto,internet,1,25.00,NO
+E15,fiado,cerveza six pack,1,,SI
+E16,venta,arroz,2,7.60,NO
+E16,venta,sal,1,1.20,NO
+E17,gasto,devolución leche,1,4.20,NO
+E18,venta,ventas sueltas,1,160.00,NO
+E19,gasto,bolsas plásticas,1,,SI
+E20,cobro_fiado,pago parcial Sra. Bertha,1,15.00,NO
+E21,venta,yogurt litro,4,34.00,NO
+E22,gasto,embutidos proveedor,1,200.00,NO
+E23,venta,ventas sueltas,1,220.00,NO
+E25,venta,pan,15,4.50,NO
+E25,venta,té,2,3.60,NO
+E26,fiado,alimento para perro,1,32.00,NO
+E27,gasto,delivery,1,40.00,NO
+E28,venta,gaseosa litro,3,16.50,NO
+E29,venta,ventas sueltas,1,310.00,NO
+E30,cobro_fiado,alimento para perro,1,32.00,NO
+E31,gasto,papel higiénico,1,48.00,NO
+E32,venta,agua medio litro,6,9.00,NO
+E32,venta,chocolates,2,4.00,NO
+E33,venta,pan,10,3.00,NO
+E33,gasto,devolución pan,2,0.60,NO
+E34,fiado,leche,2,8.40,NO
+E35,venta,ventas sueltas,1,350.00,NO
+E37,venta,gaseosa familiar,3,25.50,NO
+E38,cobro_fiado,leche,2,8.40,NO
+E39,gasto,limpieza vereda,1,15.00,NO
+E40,venta,ventas sueltas,1,140.00,NO

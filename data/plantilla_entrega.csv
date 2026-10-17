@@ -1,0 +1,2 @@
+﻿id_mensaje,tipo,producto,cantidad,monto,requiere_confirmacion
+X01,venta,pan,10,3.00,NO

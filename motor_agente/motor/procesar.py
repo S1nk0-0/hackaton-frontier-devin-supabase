@@ -236,6 +236,39 @@ def procesar(texto, estado, id_mensaje=None, modo="batch", excluir_ejemplos=()):
     return {"filas": filas, "pregunta": pregunta}
 
 
+SISTEMA_LOTE = ("\n\nLOTE: recibirás VARIOS mensajes en orden, cada uno con su id. Responde SOLO un JSON "
+                '{"mensajes":[{"id":"...","filas":[...],"pregunta":null|"texto"}]} con un elemento por mensaje, '
+                "en el mismo orden. Cada elemento sigue las mismas reglas que un mensaje suelto.")
+
+
+def procesar_lote(mensajes, estado, tam=10, excluir_ejemplos=()):
+    """[(id, texto), ...] -> {id: {"filas", "pregunta"}}. Una llamada al LLM por bloque de `tam`
+    (el few-shot va una vez por bloque, no por mensaje: clave con el límite de tokens/minuto).
+    Montos de cobros y fiados se resuelven en Python, mensaje por mensaje y en orden."""
+    res = {}
+    for i in range(0, len(mensajes), tam):
+        bloque = mensajes[i:i + tam]
+        usuario = "Fiados abiertos: " + json.dumps(
+            [{"cliente": a["cliente"], "producto": a["producto"], "cantidad": a["cantidad"],
+              "saldo": None if a["monto"] is None else round(a["monto"] - a["cobrado"], 2)}
+             for a in estado["fiados"]], ensure_ascii=False)
+        usuario += "\nMensajes:\n" + "\n".join(
+            json.dumps({"id": mid, "mensaje": t}, ensure_ascii=False) for mid, t in bloque)
+        out = _llm(construir_sistema(excluir_ejemplos) + SISTEMA_LOTE, usuario)
+        por_id = {str(m.get("id")): m for m in out.get("mensajes") or []}
+        for mid, texto in bloque:
+            if mid not in por_id:  # el LLM se saltó el mensaje: va solo
+                res[mid] = procesar(texto, estado, id_mensaje=mid, excluir_ejemplos=excluir_ejemplos)
+                continue
+            filas = [x for x in (_limpiar(f, mid) for f in por_id[mid].get("filas") or []) if x]
+            _resolver_cobros(estado, filas)
+            _registrar(estado, filas)
+            faltan = [f for f in filas if f["monto"] is None]
+            res[mid] = {"filas": filas,
+                        "pregunta": (por_id[mid].get("pregunta") or _pregunta_por_defecto(faltan)) if faltan else None}
+    return res
+
+
 def flujo_caja(filas):
     """ventas + cobros de fiado - gastos. Los fiados y filas sin monto no cuentan."""
     t = 0.0

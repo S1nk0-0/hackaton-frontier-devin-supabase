@@ -9,7 +9,7 @@ import time
 import unicodedata
 from pathlib import Path
 
-DATA = Path(__file__).resolve().parent.parent / "data"
+DATA = Path(__file__).resolve().parents[2] / "data"  # data/ de la raíz del repo
 
 # Cualquier API compatible con OpenAI. Por defecto Groq.
 BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")

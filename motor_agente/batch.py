@@ -1,4 +1,4 @@
-"""python batch.py data/set_oculto.csv NOMBRE_EQUIPO  ->  resultados_NOMBRE_EQUIPO.csv
+"""python batch.py ../data/set_oculto.csv NOMBRE_EQUIPO  ->  resultados_NOMBRE_EQUIPO.csv
 
 Por defecto en lotes (pocas llamadas, entra en el límite de tokens/minuto de Groq).
 --por-mensaje: una llamada por mensaje (más lento).

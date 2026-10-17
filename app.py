@@ -14,7 +14,7 @@ import pandas as pd
 
 from src.caja import estimar_cuota, flujo_caja
 from src.motor import COLUMNAS, a_fila_csv, completar_pendiente, nuevo_estado
-from src.numeros import _norm, texto_a_monto
+from src.numeros import CENTENAS, DECENAS, RELLENO, UNIDADES, _norm, texto_a_monto
 from src.voz import transcribir
 
 # Sin key (o con MOCK_MOTOR=1) la app usa un motor de prueba sin LLM, para avanzar la interfaz.
@@ -26,6 +26,9 @@ else:
 
 NO_SE = re.compile(r"\b(no se|no me acuerdo|no recuerdo|despues|luego|ni idea)\b")
 PORCENTAJE_MINIMO = 0.25  # la cuota se muestra como rango 25 %–30 % del flujo mensual
+VERBO_OPERACION = re.compile(r"^(vend|bend|pagu|pago|compr|cobr|devolv|gast|sali|fie|fio|fia)")
+PALABRAS_RESPUESTA = RELLENO | set(UNIDADES) | set(DECENAS) | set(CENTENAS) | {
+    "mil", "me", "le", "lo", "la", "el", "los", "las", "solo", "nada", "mas", "menos", "todo"}
 
 BIENVENIDA = (
     "¡Hola, Doña Rosa! 👋 Cuéntame lo que vendiste, compraste o fiaste, como lo anotarías en tu libreta. "
@@ -74,6 +77,15 @@ def describir(fila: dict) -> str:
 
 # --------------------------------------------------------------------------- acciones
 
+def es_operacion_nueva(texto: str) -> bool:
+    """Con una pregunta pendiente, distingue "fueron 12" / "pagué 5 soles" (respuesta)
+    de "vendí 4 gaseosas a 2.50" / "don Pepe me pagó 10" (mensaje nuevo)."""
+    palabras = re.findall(r"[a-zñ]+", _norm(texto))
+    if not any(VERBO_OPERACION.match(p) for p in palabras):
+        return False
+    return any(not VERBO_OPERACION.match(p) and p not in PALABRAS_RESPUESTA for p in palabras)
+
+
 def responder(texto: str, historial: list, estado: dict, mostrar: str | None = None):
     """`mostrar` es lo que se ve en el chat (p. ej. la nota de voz); `texto` es lo que se procesa."""
     texto = (texto or "").strip()
@@ -82,8 +94,10 @@ def responder(texto: str, historial: list, estado: dict, mostrar: str | None = N
     historial = historial + [{"role": "user", "content": mostrar or texto}]
 
     # 1) ¿Estaba esperando un monto? La respuesta completa esa fila.
+    #    Si en vez de responder cuenta otra operación, se procesa como mensaje nuevo.
     fila = None
-    if estado["pendiente"]:
+    pendiente_previo = estado["pendiente"]
+    if pendiente_previo and not es_operacion_nueva(texto):
         if NO_SE.search(_norm(texto)):
             estado["pendiente"]["fila"]["_omitida"] = True  # sigue con SI, pero no se vuelve a preguntar
             estado["pendiente"] = None
@@ -111,6 +125,8 @@ def responder(texto: str, historial: list, estado: dict, mostrar: str | None = N
                 respuesta = "Esto parece un gasto de la casa, no del negocio, así que no lo anoté en la caja. 🙂"
             if r["pregunta"]:
                 respuesta += f"\n\n❓ {r['pregunta']}"
+            elif pendiente_previo and estado["pendiente"] is pendiente_previo:
+                respuesta += f"\n\n❓ Y lo de antes: {pendiente_previo['pregunta']}"
     historial = historial + [{"role": "assistant", "content": respuesta}]
     return historial, estado, tabla(estado), resumen(estado)
 

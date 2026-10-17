@@ -74,11 +74,12 @@ def describir(fila: dict) -> str:
 
 # --------------------------------------------------------------------------- acciones
 
-def responder(texto: str, historial: list, estado: dict):
+def responder(texto: str, historial: list, estado: dict, mostrar: str | None = None):
+    """`mostrar` es lo que se ve en el chat (p. ej. la nota de voz); `texto` es lo que se procesa."""
     texto = (texto or "").strip()
     if not texto:
         return historial, estado, tabla(estado), resumen(estado)
-    historial = historial + [{"role": "user", "content": texto}]
+    historial = historial + [{"role": "user", "content": mostrar or texto}]
 
     # 1) ¿Estaba esperando un monto? La respuesta completa esa fila.
     fila = None
@@ -130,9 +131,16 @@ def responder_audio(audio: str | None, historial: list, estado: dict):
     try:
         texto = transcribir(audio)
     except Exception as e:  # noqa: BLE001
-        historial = historial + [{"role": "assistant", "content": f"No pude escuchar bien el audio 😕 ({e})"}]
+        if "GROQ_API_KEY" in str(e):
+            msg = "🎤 En modo prueba no puedo escuchar audios. Escríbeme tu mensaje, por favor. 🙂"
+        else:
+            msg = f"🎤 Uy, no pude escuchar el audio ahorita 😕. ¿Me lo mandas otra vez o me lo escribes? ({e})"
+        historial = historial + [{"role": "assistant", "content": msg}]
         return historial, estado, tabla(estado), resumen(estado), None
-    return (*responder(f"🎤 {texto}", historial, estado), None)
+    if not texto:  # silencio o solo ruido
+        historial = historial + [{"role": "assistant", "content": "🎤 No te escuché bien, Doña Rosa. ¿Me lo repites un poquito más cerca del celular?"}]
+        return historial, estado, tabla(estado), resumen(estado), None
+    return (*responder(texto, historial, estado, mostrar=f"🎤 *Te entendí:* {texto}"), None)
 
 
 def cuota(historial: list, estado: dict):

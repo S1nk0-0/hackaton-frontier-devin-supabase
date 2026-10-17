@@ -39,7 +39,8 @@ def _extraer(texto: str) -> dict:
         fila["precio_unitario"] = float(precio.group(1).replace(",", "."))
     else:
         resto = t.replace(cp.group(0), "") if cp else t
-        fila["monto_total"] = texto_a_monto(resto)
+        # solo cifras: en el mock "dos cervezas" no debe convertirse en un monto inventado
+        fila["monto_total"] = texto_a_monto(resto) if re.search(r"\d", resto) else None
         if not producto:
             fila["producto"] = next((w for w in resto.split() if len(w) > 3 and w.isalpha() and w not in _VERBOS), "")
     cliente = _CLIENTE.search(t)

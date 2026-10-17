@@ -6,13 +6,26 @@ from __future__ import annotations
 
 import copy
 import csv
+import os
+import re
 
 import gradio as gr
 import pandas as pd
 
 from src.caja import estimar_cuota, flujo_caja
-from src.motor import COLUMNAS, a_fila_csv, completar_pendiente, nuevo_estado, procesar, procesar_lote
+from src.motor import COLUMNAS, a_fila_csv, completar_pendiente, nuevo_estado
+from src.numeros import _norm, texto_a_monto
 from src.voz import transcribir
+
+# Sin key (o con MOCK_MOTOR=1) la app usa un motor de prueba sin LLM, para avanzar la interfaz.
+MODO_PRUEBA = os.getenv("MOCK_MOTOR") == "1" or not os.getenv("GROQ_API_KEY")
+if MODO_PRUEBA:
+    from src.motor_mock import procesar, procesar_lote
+else:
+    from src.motor import procesar, procesar_lote
+
+NO_SE = re.compile(r"\b(no se|no me acuerdo|no recuerdo|despues|luego|ni idea)\b")
+PORCENTAJE_MINIMO = 0.25  # la cuota se muestra como rango 25 %–30 % del flujo mensual
 
 BIENVENIDA = (
     "¡Hola, Doña Rosa! 👋 Cuéntame lo que vendiste, compraste o fiaste, como lo anotarías en tu libreta. "
@@ -68,9 +81,20 @@ def responder(texto: str, historial: list, estado: dict):
     historial = historial + [{"role": "user", "content": texto}]
 
     # 1) ¿Estaba esperando un monto? La respuesta completa esa fila.
-    fila = completar_pendiente(estado, texto)
+    fila = None
+    if estado["pendiente"]:
+        if NO_SE.search(_norm(texto)):
+            estado["pendiente"]["fila"]["_omitida"] = True  # sigue con SI, pero no se vuelve a preguntar
+            estado["pendiente"] = None
+            respuesta = "No te preocupes 🙂. Lo dejo marcado para confirmarlo después y no lo cuento en tu caja."
+            respuesta += siguiente_pregunta(estado)
+            historial = historial + [{"role": "assistant", "content": respuesta}]
+            return historial, estado, tabla(estado), resumen(estado)
+        monto = texto_a_monto(texto)  # entiende "12.50" y también "seis cincuenta"
+        if monto is not None:
+            fila = completar_pendiente(estado, f"{monto}")
     if fila:
-        respuesta = f"¡Gracias! Lo anoté. {describir(fila)}"
+        respuesta = f"¡Gracias! Lo anoté. {describir(fila)}" + siguiente_pregunta(estado)
     else:
         # 2) Mensaje nuevo
         estado["contador"] += 1
@@ -88,6 +112,16 @@ def responder(texto: str, historial: list, estado: dict):
                 respuesta += f"\n\n❓ {r['pregunta']}"
     historial = historial + [{"role": "assistant", "content": respuesta}]
     return historial, estado, tabla(estado), resumen(estado)
+
+
+def siguiente_pregunta(estado: dict) -> str:
+    """Si quedan otras filas sin monto, pregunta por la siguiente (de una en una)."""
+    for f in estado["transacciones"]:
+        if f["monto"] is None and f["requiere_confirmacion"] == "SI" and not f.get("_omitida"):
+            pregunta = f"¿Y cuánto fue lo de {f['producto'] or 'la otra operación'}?"
+            estado["pendiente"] = {"fila": f, "pregunta": pregunta}
+            return f"\n\n❓ {pregunta}"
+    return ""
 
 
 def responder_audio(audio: str | None, historial: list, estado: dict):
@@ -108,7 +142,11 @@ def cuota(historial: list, estado: dict):
         msg = "Todavía no tengo movimientos tuyos. Cuéntame qué vendiste y gastaste y te ayudo a calcular. 🙂"
     else:
         monto, explicacion = estimar_cuota(filas, semanas=max(semanas, 1))
-        msg = f"### 🧮 Podrías pagar unos S/ {monto:.2f} al mes\n{explicacion}"
+        if monto > 0:
+            minimo = monto * PORCENTAJE_MINIMO / 0.30
+            msg = f"### 🧮 Una cuota cómoda para ti estaría entre S/ {minimo:.2f} y S/ {monto:.2f} al mes\n{explicacion}"
+        else:
+            msg = f"### 🧮 Por ahora mejor no asumir una cuota\n{explicacion}"
     historial = historial + [
         {"role": "user", "content": "¿Cuánto puedo pagar de cuota?"},
         {"role": "assistant", "content": msg},
@@ -140,6 +178,8 @@ def cargar_semana(archivo, estado: dict):
 with gr.Blocks(title="De la libreta a la caja") as demo:
     estado = gr.State(copy.deepcopy(estado_inicial()))
     gr.Markdown("# 📒 De la libreta a la caja\nTu cuaderno de ventas, pero en el celular.")
+    if MODO_PRUEBA:
+        gr.Markdown("⚠️ _Modo prueba: sin GROQ_API_KEY se usa un motor simple sin IA y la voz no funciona._")
     with gr.Row():
         with gr.Column(scale=3):
             chat = gr.Chatbot(value=[{"role": "assistant", "content": BIENVENIDA}], height=450, label="Conversación")

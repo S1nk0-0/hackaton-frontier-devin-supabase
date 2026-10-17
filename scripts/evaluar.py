@@ -2,6 +2,8 @@
 
     python scripts/evaluar.py            # mensaje por mensaje (como la app)
     python scripts/evaluar.py --lote     # en bloques (como batch.py, más rápido)
+    python scripts/evaluar.py --mensajes data/prueba_mensajes.csv --respuestas data/prueba_respuestas.csv
+                                         # segundo evaluador (mismo formato que los ejemplos)
 
 Nota: al procesar cada mensaje se quita ESE mensaje de los few-shot, para no hacer trampa.
 """
@@ -49,10 +51,12 @@ def coincidencias(esperadas: list[dict], obtenidas: list[dict], con_producto: bo
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--lote", action="store_true", help="usar procesar_lote (como batch.py)")
+    ap.add_argument("--mensajes", default=str(DATA / "ejemplos_mensajes.csv"))
+    ap.add_argument("--respuestas", default=str(DATA / "ejemplos_respuestas.csv"))
     args = ap.parse_args()
 
-    mensajes = leer(DATA / "ejemplos_mensajes.csv")
-    esperadas_todas = leer(DATA / "ejemplos_respuestas.csv")
+    mensajes = leer(Path(args.mensajes))
+    esperadas_todas = leer(Path(args.respuestas))
     esperadas_por_id: dict[str, list[dict]] = {}
     for r in esperadas_todas:
         esperadas_por_id.setdefault(r["id_mensaje"].strip(), []).append(r)
@@ -96,9 +100,9 @@ def main():
     print(f"Filas correctas (sin mirar producto): {aciertos_sin_prod}/{total_esp}")
     print(f"Filas obtenidas de más o erradas: {falsos_pos}")
     flujo = flujo_caja(obtenidas_todas)["flujo"]
-    print(f"Flujo calculado: {flujo:.2f}  |  esperado: {FLUJO_ESPERADO:.2f}  "
-          f"|  {'OK' if abs(flujo - FLUJO_ESPERADO) < 0.01 else 'DIFERENTE'}")
-    print(f"Flujo de ejemplos_respuestas.csv: {flujo_caja(esperadas_todas)['flujo']:.2f}")
+    esperado = flujo_caja(esperadas_todas)["flujo"]  # con los ejemplos = FLUJO_ESPERADO (788.90)
+    print(f"Flujo calculado: {flujo:.2f}  |  esperado: {esperado:.2f}  "
+          f"|  {'OK' if abs(flujo - esperado) < 0.01 else 'DIFERENTE'}")
     print(f"Tiempo: {time.time() - t0:.1f}s")
 
 

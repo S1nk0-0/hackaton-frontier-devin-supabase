@@ -41,6 +41,7 @@ def nuevo_estado() -> dict:
     return {
         "transacciones": [],  # filas ya registradas (formato de salida)
         "fiados": {},         # cliente -> monto pendiente
+        "fiados_producto": {},  # cliente -> producto que se llevó fiado
         "pendiente": None,    # {"fila": dict, "pregunta": str} si falta un dato
     }
 
@@ -192,7 +193,9 @@ def _bloque_ejemplos(excluir: set[str]) -> str:
 def _contexto(estado: dict) -> str:
     partes = []
     if estado["fiados"]:
-        partes.append("Fiados pendientes por cliente: " + json.dumps(estado["fiados"], ensure_ascii=False))
+        partes.append("Fiados pendientes por cliente: " + json.dumps(
+            {c: {"monto": m, "producto": estado.get("fiados_producto", {}).get(c)} for c, m in estado["fiados"].items()},
+            ensure_ascii=False))
     ultimas = estado["transacciones"][-5:]
     if ultimas:
         partes.append("Últimas transacciones registradas: " + json.dumps(ultimas, ensure_ascii=False))
@@ -232,8 +235,21 @@ def calcular_monto(f: dict) -> float | None:
     return None
 
 
+_TRATAMIENTOS = {"la", "el", "senora", "sra", "sra.", "senor", "sr", "sr.", "don", "dona", "seno", "vecina", "vecino"}
+
+
 def _clave_cliente(nombre) -> str:
-    return _norm(str(nombre or "")).replace("dona ", "").replace("don ", "").replace("sra ", "").replace("sr ", "").strip()
+    return " ".join(p for p in _norm(str(nombre or "")).split() if p not in _TRATAMIENTOS)
+
+
+def _buscar_cliente(clave: str, estado: dict) -> str | None:
+    """Encuentra el cliente en fiados aunque el nombre venga incompleto ("Rosa" vs "rosa maria")."""
+    if clave in estado["fiados"]:
+        return clave
+    for c in estado["fiados"]:
+        if clave and (clave in c or c in clave):
+            return c
+    return None
 
 
 def _aplicar(id_mensaje: str, salida_llm: dict, estado: dict) -> dict:
@@ -244,12 +260,18 @@ def _aplicar(id_mensaje: str, salida_llm: dict, estado: dict) -> dict:
         if tipo not in TIPOS:
             continue
         monto = calcular_monto(f)
+        producto = str(f.get("producto") or "").strip()
         cliente = _clave_cliente(f.get("cliente") or f.get("producto"))
+        if tipo == "cobro_fiado":
+            cliente = _buscar_cliente(cliente, estado) or cliente
 
         if tipo == "cobro_fiado" and monto is None and cliente in estado["fiados"]:
             monto = estado["fiados"][cliente]  # cobro sin monto → lo que debía
-        if tipo == "fiado" and monto is not None:
-            estado["fiados"][cliente] = round(estado["fiados"].get(cliente, 0) + monto, 2)
+            producto = estado["fiados_producto"].get(cliente) or producto  # E12: "aceite primor"
+        if tipo == "fiado":
+            estado["fiados_producto"][cliente] = producto
+            if monto is not None:
+                estado["fiados"][cliente] = round(estado["fiados"].get(cliente, 0) + monto, 2)
         if tipo == "cobro_fiado" and monto is not None and cliente in estado["fiados"]:
             restante = round(estado["fiados"][cliente] - monto, 2)
             if restante > 0:
@@ -260,8 +282,8 @@ def _aplicar(id_mensaje: str, salida_llm: dict, estado: dict) -> dict:
         fila = {
             "id_mensaje": id_mensaje,
             "tipo": tipo,
-            "producto": str(f.get("producto") or "").strip().lower(),
-            "cantidad": _a_numero(f.get("cantidad")),
+            "producto": producto,
+            "cantidad": _a_numero(f.get("cantidad")) or 1.0,  # sin cantidad → 1 (agua, luz, ventas sueltas)
             "monto": monto,
             "requiere_confirmacion": "SI" if monto is None else "NO",
         }
